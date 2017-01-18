@@ -2360,7 +2360,7 @@ TEST_F(VkLayerTest, BindInvalidMemory) {
     image_create_info.mipLevels = 1;
     image_create_info.arrayLayers = 1;
     image_create_info.samples = VK_SAMPLE_COUNT_1_BIT;
-    image_create_info.tiling = VK_IMAGE_TILING_LINEAR;
+    image_create_info.tiling = VK_IMAGE_TILING_OPTIMAL;
     image_create_info.usage = VK_IMAGE_USAGE_SAMPLED_BIT;
     image_create_info.flags = 0;
 
@@ -2463,7 +2463,65 @@ TEST_F(VkLayerTest, BindInvalidMemory) {
         vkDestroyBuffer(device(), buffer, NULL);
     }
 
+    // Try to bind memory to an image created with sparse memory flags
+    {
+        VkImageCreateInfo sparse_image_create_info = image_create_info;
+        sparse_image_create_info.flags |= VK_IMAGE_CREATE_SPARSE_BINDING_BIT;
+        VkImage sparse_image = VK_NULL_HANDLE;
+        err = vkCreateImage(m_device->device(), &sparse_image_create_info, NULL, &sparse_image);
+        ASSERT_VK_SUCCESS(err);
+        VkMemoryRequirements sparse_mem_reqs = {};
+        vkGetImageMemoryRequirements(m_device->device(), sparse_image, &sparse_mem_reqs);
+        if (sparse_mem_reqs.memoryTypeBits != 0) {
+            VkMemoryAllocateInfo sparse_mem_alloc = {};
+            sparse_mem_alloc.sType = VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO;
+            sparse_mem_alloc.pNext = NULL;
+            sparse_mem_alloc.allocationSize = sparse_mem_reqs.size;
+            sparse_mem_alloc.memoryTypeIndex = 0;
+            pass = m_device->phy().set_memory_type(sparse_mem_reqs.memoryTypeBits, &sparse_mem_alloc, 0);
+            ASSERT_TRUE(pass);
+            VkDeviceMemory sparse_mem = VK_NULL_HANDLE;
+            err = vkAllocateMemory(m_device->device(), &sparse_mem_alloc, NULL, &sparse_mem);
+            ASSERT_VK_SUCCESS(err);
+            m_errorMonitor->SetDesiredFailureMsg(VK_DEBUG_REPORT_ERROR_BIT_EXT, VALIDATION_ERROR_00804);
+            err = vkBindImageMemory(m_device->device(), sparse_image, sparse_mem, 0);
+            // This may very well return an error.
+            (void)err;
+            m_errorMonitor->VerifyFound();
+            vkFreeMemory(m_device->device(), sparse_mem, NULL);
+        }
+        vkDestroyImage(m_device->device(), sparse_image, NULL);
+    }
 
+    // Try to bind memory to a buffer created with sparse memory flags
+    {
+        VkBufferCreateInfo sparse_buffer_create_info = buffer_create_info;
+        sparse_buffer_create_info.flags |= VK_BUFFER_CREATE_SPARSE_BINDING_BIT;
+        VkBuffer sparse_buffer = VK_NULL_HANDLE;
+        err = vkCreateBuffer(m_device->device(), &sparse_buffer_create_info, NULL, &sparse_buffer);
+        ASSERT_VK_SUCCESS(err);
+        VkMemoryRequirements sparse_mem_reqs = {};
+        vkGetBufferMemoryRequirements(m_device->device(), sparse_buffer, &sparse_mem_reqs);
+        if (sparse_mem_reqs.memoryTypeBits != 0) {
+            VkMemoryAllocateInfo sparse_mem_alloc = {};
+            sparse_mem_alloc.sType = VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO;
+            sparse_mem_alloc.pNext = NULL;
+            sparse_mem_alloc.allocationSize = sparse_mem_reqs.size;
+            sparse_mem_alloc.memoryTypeIndex = 0;
+            pass = m_device->phy().set_memory_type(sparse_mem_reqs.memoryTypeBits, &sparse_mem_alloc, 0);
+            ASSERT_TRUE(pass);
+            VkDeviceMemory sparse_mem = VK_NULL_HANDLE;
+            err = vkAllocateMemory(m_device->device(), &sparse_mem_alloc, NULL, &sparse_mem);
+            ASSERT_VK_SUCCESS(err);
+            m_errorMonitor->SetDesiredFailureMsg(VK_DEBUG_REPORT_ERROR_BIT_EXT, VALIDATION_ERROR_00792);
+            err = vkBindBufferMemory(m_device->device(), sparse_buffer, sparse_mem, 0);
+            // This may very well return an error.
+            (void)err;
+            m_errorMonitor->VerifyFound();
+            vkFreeMemory(m_device->device(), sparse_mem, NULL);
+        }
+        vkDestroyBuffer(m_device->device(), sparse_buffer, NULL);
+    }
 }
 
 TEST_F(VkLayerTest, BindMemoryToDestroyedObject) {
